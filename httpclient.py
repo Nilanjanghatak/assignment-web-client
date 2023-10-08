@@ -33,7 +33,11 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self,url):
+        parsed_url = urllib.parse.urlparse(url)
+        hostname = parsed_url.hostname
+        port = parsed_url.port or 80 
+        return hostname, port
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,13 +45,13 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+       return data.split('\r\n')[0].split(" ")[1]
 
     def get_headers(self,data):
-        return None
+       return data.split('\r\n\r\n')[0]
 
     def get_body(self, data):
-        return None
+        return data.split('\r\n\r\n')[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,18 +74,38 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+        hostname, port = self.get_host_port(url)
+        self.connect(hostname, port)
+        path = urllib.parse.urlparse(url).path or '/'
+        request = "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n" % (path, hostname)
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+        code = int(self.get_code(response))
+        body = self.get_body(response)
+        print(body)
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
-        return HTTPResponse(code, body)
-
-    def command(self, url, command="GET", args=None):
-        if (command == "POST"):
-            return self.POST( url, args )
+        hostname, port = self.get_host_port(url)    
+        self.connect(hostname, port)
+        path = urllib.parse.urlparse(url).path or '/'
+        if args:
+            content = urllib.parse.urlencode(args)
+            content_length = len(content)
         else:
-            return self.GET( url, args )
+            content = ""
+            content_length = 0
+        request = "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s" % (path, hostname, content_length, content)
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+        code = int(self.get_code(response))
+        body = self.get_body(response)
+        print(body)
+        return HTTPResponse(code, body)
     
 if __name__ == "__main__":
     client = HTTPClient()
@@ -93,3 +117,4 @@ if __name__ == "__main__":
         print(client.command( sys.argv[2], sys.argv[1] ))
     else:
         print(client.command( sys.argv[1] ))
+
